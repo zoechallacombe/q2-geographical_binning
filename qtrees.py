@@ -28,14 +28,14 @@ def clean(md_df):
     ## if selected method of binning is mock
     #md_edited['country'] = md_df['country']
 
-    df = md_df[['latitude','longitude']]
+    df = md_df[['longitude','latitude']]
 
     #as global or local in function, define all null or this:
     df['latitude'] = pd.to_numeric(df.latitude, errors='coerce')
     df['longitude'] = pd.to_numeric(df.longitude, errors='coerce')
     
     #drop nan values (formerly strings) from dataframe
-    df = df.dropna(subset = ['latitude', 'longitude'])
+    df = df.dropna(subset = ['longitude', 'latitude'])
   
     if df.empty is True:
         raise ValueError("Latitude and/or Longitude have no numeric values, please check your data.")
@@ -95,20 +95,70 @@ class QTree():
     def get_points(self):
         return self.points
     
-    def subdivide(self, count):
-        samples = pd.DataFrame()
-        samples['index'] = df['index']
-        samples = samples.set_index('index')
-
+    def subdivide(self, count, samples):
         count = 0
         id_1 = ""
         base = skbio.TreeNode(name="root")
-
+        print(samples.head())
         recursive_subdivide(self.root, self.threshold, count, id_1, base)
 
             
-        return base
-    ''' 
+        return base, bin_id
+
+def recursive_subdivide(node, k, count, id_1, tree_node):
+    
+
+    if len(node.points) < k:
+        return
+    
+    samples["H" + str(count)] = ""
+
+    id_1 += str(count)
+    samples["H" + str(count)] = ""
+
+    bin_id.append("H" + str(count))
+    
+    w_ = node.width/2
+    h_ = node.height/2    
+    nodes = []
+    sk_nodes = []
+
+    for i in range(4):
+        
+        if(i ==0):
+            quad = "sw"
+            node.x0 = node.x0
+            node.y0 = node.y0
+
+        elif(i==1):
+            quad = "nw"
+            node.x0 = node.x0
+            node.y0 = node.y0+h_
+        elif(i == 2):
+            quad = "ne"
+            node.x0 = node.x0+w_
+            node.y0 = node.y0
+        elif(i == 3):
+            quad = "se"
+            node.x0 = node.x0
+            node.y0 = node.y0-h_
+
+        
+        p = contains(node.x0, node.y0, w_, h_, node.points)
+        quad_node= Node(node.x0, node.y0, w_, h_, p, id_1 + quad+";")
+        tree_node = skbio.TreeNode(name=str(count) + quad)
+        
+        for pt in p:
+            bin_1.append((pt.sample_id, count, quad_node.get_id()))
+            #tree_node.extend([skbio.TreeNode(name=pt.sample_id)])
+        nodes.append(quad_node)
+        sk_nodes.append(tree_node)
+        recursive_subdivide(quad_node, k, count, id_1+quad+";", tree_node)
+        
+    tree_node.extend(sk_nodes)
+    node.children = nodes
+
+''' 
     def graph(self):
         vertices = []
         for i in range(0, 4):
@@ -133,59 +183,6 @@ class QTree():
         return
     '''
 
-def recursive_subdivide(node, k, count, id_1, tree_node):
-    count += 1
-    id_1 += str(count)
-    
-    bin_id.append("H" + str(count))
-    samples["H" + str(count)] = ""
-    
-     
-    if len(node.points)<=k:
-        return
-
-    print(type(node.width))
-    w_ = node.width/2
-    h_ = node.height/2
-    
-    #fun challenge do it in a for loop
-    #probably make it smaller
-    p = contains(node.x0, node.y0, w_, h_, node.points)
-    x1 = Node(node.x0, node.y0, w_, h_, p, id_1 + "sw;")
-    node_1 = skbio.TreeNode(name=str(count) + "sw")
-    for pt in p:
-        bin_1.append((pt.sample_id, count, x1.get_id()))
-        node_1.extend([skbio.TreeNode(name=pt.sample_id)])
-    recursive_subdivide(x1, k, count, id_1+"sw;", node_1)
-    
-    p = contains(node.x0, node.y0+h_, w_, h_, node.points)
-    x2 = Node(node.x0, node.y0+h_, w_, h_, p, id_1+"nw;")
-    node_2 = skbio.TreeNode(name=str(count)+"nw")
-    for pt in p:
-        bin_1.append((pt.sample_id, count, x2.get_id()))
-        node_2.extend([skbio.TreeNode(name=pt.sample_id)])
-    recursive_subdivide(x2, k, count, id_1+"nw;", node_2)
-
-    p = contains(node.x0+w_, node.y0, w_, h_, node.points)
-    x3 = Node(node.x0 + w_, node.y0, w_, h_, p, id_1+"se;")
-    node_3 = skbio.TreeNode(name=str(count)+"se")
-    for pt in p:
-        bin_1.append((pt.sample_id, count, x3.get_id()))
-        node_3.extend([skbio.TreeNode(name=pt.sample_id)])
-    recursive_subdivide(x3, k, count, id_1+"se;", node_3)
-
-    p = contains(node.x0+w_, node.y0+h_, w_, h_, node.points)
-    x4 = Node(node.x0+w_, node.y0+h_, w_, h_, p, id_1+"ne;")
-    node_4 = skbio.TreeNode(name=str(count)+"ne")
-    for pt in p:
-        bin_1.append((pt.sample_id, count, x4.get_id()))
-        node_4.extend([skbio.TreeNode(name=pt.sample_id)])
-    recursive_subdivide(x4, k, count, id_1+"ne;", node_4)
-
-    
-    
-    tree_node.extend([node_1, node_2, node_3, node_4])
-    node.children = [x1, x2, x3, x4]
 
     
 def contains(x, y, w, h, points):
@@ -207,16 +204,20 @@ def find_children(node):
 '''
 
 
-def get_results(cleaned_df, depth):
+def get_results(cleaned_df, threshold):
     cleaned_df = cleaned_df.reset_index()
     xy = cleaned_df.to_numpy()
+
     samples = pd.DataFrame()
     samples['index'] = cleaned_df['index']
-    bin_0 = []
+    
+    bin_1 = []
     bin_id = [] 
-    q = QTree(depth, xy)
-    tree = q.subdivide(count = 0)
-
+    print(samples.head())
+    q = QTree(threshold, xy)
+    tree = q.subdivide(0, samples)
+    
+    print("working here")
     for samp, bin_i, items in bin_0:
         bin_name = "H" + str(bin_i)
         samples[bin_name] = np.where(samples['index'] == samp, items, samples[bin_name])
