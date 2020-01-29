@@ -49,8 +49,6 @@ def clean(md_df):
     df['longitude'] = df['longitude'] + 180
     
     return df
-
-#from matplotlib import patches
 class Point():
     def __init__(self, x, y, sample_id):
         self.x = float(x)
@@ -95,76 +93,19 @@ class QTree():
     def get_points(self):
         return self.points
     
-    def subdivide(self, count, samples):
+    def subdivide(self, samples):
         count = 0
-        id_1 = ""
-        base = skbio.TreeNode(name="root")
-        print(samples.head())
-        recursive_subdivide(self.root, self.threshold, count, id_1, base)
-
-            
-        return base, bin_id
-
-def recursive_subdivide(node, k, count, id_1, tree_node):
+        node_id = ""
+        samples = samples
+        bins  = []
+        sktree = skbio.TreeNode(name="root")
+        
+        samples, bins = recursive_subdivide(self.root, self.threshold, count, node_id, samples, bins, sktree)
+        return sktree, samples, bins
     
-
-    if len(node.points) < k:
-        return
-    
-    samples["H" + str(count)] = ""
-
-    id_1 += str(count)
-    samples["H" + str(count)] = ""
-
-    bin_id.append("H" + str(count))
-    
-    w_ = node.width/2
-    h_ = node.height/2    
-    nodes = []
-    sk_nodes = []
-
-    for i in range(4):
-        
-        if(i ==0):
-            quad = "sw"
-            node.x0 = node.x0
-            node.y0 = node.y0
-
-        elif(i==1):
-            quad = "nw"
-            node.x0 = node.x0
-            node.y0 = node.y0+h_
-        elif(i == 2):
-            quad = "ne"
-            node.x0 = node.x0+w_
-            node.y0 = node.y0
-        elif(i == 3):
-            quad = "se"
-            node.x0 = node.x0
-            node.y0 = node.y0-h_
-
-        
-        p = contains(node.x0, node.y0, w_, h_, node.points)
-        quad_node= Node(node.x0, node.y0, w_, h_, p, id_1 + quad+";")
-        tree_node = skbio.TreeNode(name=str(count) + quad)
-        
-        for pt in p:
-            bin_1.append((pt.sample_id, count, quad_node.get_id()))
-            #tree_node.extend([skbio.TreeNode(name=pt.sample_id)])
-        nodes.append(quad_node)
-        sk_nodes.append(tree_node)
-        recursive_subdivide(quad_node, k, count, id_1+quad+";", tree_node)
-        
-    tree_node.extend(sk_nodes)
-    node.children = nodes
-
-''' 
+    '''
     def graph(self):
-        vertices = []
-        for i in range(0, 4):
-            vertex = (node.x0, node.y0)
-            vertices.append([latlng.lng().degrees,
-                             latlng.lat().degrees])
+
         fig = plt.figure(figsize=(12, 6))
         plt.title("Quadtree")
         ax = fig.add_subplot(111)
@@ -184,6 +125,61 @@ def recursive_subdivide(node, k, count, id_1, tree_node):
     '''
 
 
+def recursive_subdivide(node, k, count, node_id, samples, bins, sktree):
+
+    if len(node.points) < k:
+        return
+    elif len(node.points)/k >= len(node.points):
+        raise ValueError("The threshold for subdivision is less than the amount of points in one place,", 
+                         "please chose a larger threshold for division")
+    else:
+        node_id += str(count)
+        count += 1
+
+    samples["H" + str(count)] = ""
+    
+    w_ = node.width/2
+    h_ = node.height/2    
+    
+    nodes = []
+    sk_nodes = []
+    for i in range(4):
+        if(i ==0):
+            quad = "sw"
+            node.x0 = node.x0
+            node.y0 = node.y0
+
+        elif(i==1):
+            quad = "nw"
+            node.x0 = node.x0
+            node.y0 = node.y0+h_
+        elif(i == 2):
+            quad = "ne"
+            node.x0 = node.x0+w_
+            node.y0 = node.y0
+        elif(i == 3):
+            quad = "se"
+            node.x0 = node.x0
+            node.y0 = node.y0-h_
+
+        p = contains(node.x0, node.y0, w_, h_, node.points)
+        quad_node= Node(node.x0, node.y0, w_, h_, p, node_id + quad+";")
+        tree_node = skbio.TreeNode(name=str(count) + quad)
+        
+        for pt in p:
+            bins.append((pt.sample_id, count, quad_node.get_id()))
+            tree_node.extend([skbio.TreeNode(name=pt.sample_id)])
+        
+        nodes.append(quad_node)
+        sk_nodes.append(tree_node)
+        recursive_subdivide(quad_node, k, count, node_id+quad+";", samples, bins, tree_node)
+
+    sktree.extend(sk_nodes)
+    node.children = nodes
+    return samples, bins
+
+    #if number of input samples/k is less than 4 there may be issues raise exception
+    
     
 def contains(x, y, w, h, points):
     pts = []
@@ -192,36 +188,17 @@ def contains(x, y, w, h, points):
             pts.append(point)
     return pts
 
-'''
-def find_children(node):
-    if not node.children:
-        return [node]
-    else:
-        children = []
-        for child in node.children:
-            children += (find_children(child))
-    return children
-'''
-
-
 def get_results(cleaned_df, threshold):
     cleaned_df = cleaned_df.reset_index()
     xy = cleaned_df.to_numpy()
-
     samples = pd.DataFrame()
+
     samples['index'] = cleaned_df['index']
-    
-    bin_1 = []
-    bin_id = [] 
-    print(samples.head())
+    samples.set_index("index")
     q = QTree(threshold, xy)
-    tree = q.subdivide(0, samples)
-    
-    print("working here")
-    for samp, bin_i, items in bin_0:
+    tree, samples, bins = q.subdivide(samples)
+    for samp, bin_i, items in bins:
         bin_name = "H" + str(bin_i)
         samples[bin_name] = np.where(samples['index'] == samp, items, samples[bin_name])
-    
+    samples = samples.set_index('index')
     return tree, samples
-    
-
