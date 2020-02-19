@@ -1,13 +1,9 @@
-import biom
 import pandas as pd
 import pandas.testing as pdt
 import numpy as np
 import skbio
-import matplotlib.pyplot as plt
-from mpl_toolkits.basemap import Basemap #dont need
-from shapely.geometry import Point, Polygon
 import unittest
-import qtrees
+import qtrees_fin as qtrees
 from io import StringIO
 import numpy.testing as npt
 #test every path through code including exception raising for comprehension
@@ -35,14 +31,14 @@ class BasicTest(unittest.TestCase):
             self.test_df = test_df.set_index("index")
             
             #create answer dataframe
-            correct_point = [['test_id_sw1', '0sw;', '0sw;1sw;'], 
-                ['test_id_nw1', '0nw;', '0nw;1nw;'],
-                ['test_id_ne1', '0ne;', '0ne;1ne;'],
-                ['test_id_se1', '0se;', '0se;1se;'],
-                ['test_id_sw2', '0sw;', '0sw;1nw;'],
-                ['test_id_nw2', '0nw;', '0nw;1sw;'],
-                ['test_id_ne2', '0ne;', '0ne;1se;'],
-                ['test_id_se2', '0se;', '0se;1ne;']]
+            correct_point = [['test_id_sw1', '3.', '3.3.'], 
+                ['test_id_nw1', '1.', '1.1.'],
+                ['test_id_ne1', '2.', '2.2.'],
+                ['test_id_se1', '4.', '4.4.'],
+                ['test_id_sw2', '3.', '3.1.'],
+                ['test_id_nw2', '1.', '1.3.'],
+                ['test_id_ne2', '2.', '2.4.'],
+                ['test_id_se2', '4.', '4.2.']]
             
             #Set the correct dataframe
             correct_dataframe = pd.DataFrame(correct_point, 
@@ -50,10 +46,10 @@ class BasicTest(unittest.TestCase):
             self.correct_dataframe = correct_dataframe.set_index('index')
             
             #set the correct tree
-            self.correct_tree = skbio.TreeNode.read(StringIO("(('1sw;2sw','1sw;2nw')'1sw',('1nw;2nw','1nw;2sw')'1nw',('1se;2se', '1se;2ne')'1se', ('1ne;2ne','1ne;2se')'1ne')root;"))
-            #check the string, maybe semicolons wont work. Also no spaces
+            #this needs to be fixed
+            self.correct_tree = skbio.TreeNode.read(StringIO(
+                "((('test_id_sw1')'3.3',('test_id_sw2')'3.1')'3.', (('test_id_nw1')'1.1.',('test_id_nw2')'1.3.')'1.', (('test_id_se1')'4.4.', ('test_id_se2')'4.2.')'4.', (('test_id_ne1')'2.2.',('test_id_ne2')'2.4.')'2.')root;"))
 
-        
         #clean dataframe tests
         def test_clean_df(self):
             incorrect_points = [['test_id_sw', -180, -90],
@@ -98,46 +94,50 @@ class BasicTest(unittest.TestCase):
             threshold = 2
             test_tree, test_samples = qtrees.get_results(self.test_df, threshold)
             pdt.assert_frame_equal(test_samples, self.correct_dataframe) 
-
-            print(test_tree.ascii_art())
-            print(self.correct_tree.ascii_art())
-            self.assertTrue(test_tree.compare_subsets(self.correct_tree))
-            #self.assertTrue(test_tree.compare_tip_distances(self.correct_tree))
-            #tree is violently not working
+            
+            
+            self.assertEqual(test_tree.compare_subsets(self.correct_tree), 0.0)
+            self.assertEqual(test_tree.compare_rfd(self.correct_tree), 0.0)
 
         def test_threshold(self):
             threshold = 1
             with self.assertRaises(ValueError):
                 tree_1, samples_1 = qtrees.get_results(self.test_df, threshold)
             
-            threshold = 4
-            correct_point_4 = [['test_id_sw1', '0sw;'],
-                ['test_id_nw1', '0nw;'],
-                ['test_id_ne1', '0ne;'],
-                ['test_id_se1', '0se;'],
-                ['test_id_sw2', '0sw;'],
-                ['test_id_nw2', '0nw;'],
-                ['test_id_ne2', '0ne;'],
-                ['test_id_se2', '0se;']]
+            
+            threshold = 5
+            correct_depth1_pt = [['test_id_sw1', '3.'],
+                ['test_id_nw1', '1.'],
+                ['test_id_ne1', '2.'],
+                ['test_id_se1', '4.'],
+                ['test_id_sw2', '3.'],
+                ['test_id_nw2', '1.'],
+                ['test_id_ne2', '2.'],
+                ['test_id_se2', '4.']]
 
             #Set the correct dataframe
-            correct_dataframe_4 = pd.DataFrame(correct_point_4,
+            correct_depth1_df = pd.DataFrame(correct_depth1_pt,
                 columns=['index', 'H1'])
+            correct_depth1_df = correct_depth1_df.set_index('index')
 
-            correct_dataframe_4 = correct_dataframe_4.set_index('index')
+
             tree_4, samples_4 = qtrees.get_results(self.test_df, threshold)
-            pdt.assert_frame_equal(samples_4, correct_dataframe_4)
+            pdt.assert_frame_equal(samples_4, correct_depth1_df)
             
-            #what to do when threshold is higher than number of samples
-            threshold = 9
+            #what to do when threshold is higher than number of samples?
+            threshold = 8
             tree_8, samples_8 = qtrees.get_results(self.test_df, threshold)
-            print("~", samples_8)
-
-        #outer to inner methods or visa versa
+            pdt.assert_frame_equal(samples_8, correct_depth1_df)
         
+        #def test_build_samples(self):
+                
+
+        #def test_build_tree(self):
+            
+        
+        #test the same dataframe to confirm consistant "mapping" to the same quadrants for
+        #boundary points
         def test_boundaries(self):
-            #question how best to test?
-            #if testing the same data frame twice, testing the same points in different positions?
             boundary_points = [['test_1', 180, 90],
                 ['test_2', 90, 90],
                 ['test_3', 180, 45],
@@ -149,39 +149,18 @@ class BasicTest(unittest.TestCase):
             boundary_df = boundary_df.set_index('index')
             
 
-            boundary_points_mixed = [['test_2', 90, 90],
-                ['test_1', 180, 90],
-                ['test_4', 180, 135],
+            boundary_points_2 = [['test_1', 180, 90],
+                ['test_2', 90, 90],
                 ['test_3', 180, 45],
+                ['test_4', 180, 135],
                 ['test_5', 360.0, 90.0]]
 
-            boundary_df_mix =pd.DataFrame(boundary_points_mixed,
+            boundary_df_2 =pd.DataFrame(boundary_points_2,
                 columns = ['index', 'longitude', 'latitude'])
-            boundary_df_mix = boundary_df_mix.set_index('index')
+            boundary_df_2 = boundary_df_2.set_index('index')
             tree, samples = qtrees.get_results(boundary_df, 4)
-            tree_mix, samples_mix = qtrees.get_results(boundary_df_mix, 4)
-            print(samples_mix, samples)
-            pdt.assert_frame_equal(samples_mix, samples)
-
-        def test_contains(self):
+            tree_2, samples_2 = qtrees.get_results(boundary_df_2, 4)
+            pdt.assert_frame_equal(samples_2, samples)
             
-
-        #def test_bin_by_quadtrees(self):
-            #test binning correct with small threshold k = 2, and larger k = 3-4 <-done
-            #test binning is consitent when on the divide between quadrants
-            #test correct output for binned and samples, 
-            #tree, samples = qtrees.get_results(self.test_df, 2)
-            #print(samples) 
-            #print(tree)
-            #print(tree.ascii_art())
-            #with self.assertRaises(ValueError):
-            #    tree=self.correct_tree
-            #print(samples)
-                #goals 100% code coverage
-                #level of detail may just excercise the code
-                #test on the outer function (working through the stuff)
-                #seperate test for inner
-                #test names are correct
-                #test correct outputs
 if __name__ == '__main__':
     unittest.main()                

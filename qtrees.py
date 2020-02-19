@@ -6,17 +6,6 @@ import biom
 import pandas as pd
 import numpy as np
 import skbio
-import s2sphere as s2
-import matplotlib.pyplot as plt
-from mpl_toolkits.basemap import Basemap
-from shapely.geometry import Point, Polygon
-#for ~fancy~ just do it as a qiime2 plugin
-#Or python click
-#set registration to be a choice
-#look at q2_diversity - beta-diversity 
-#upfront sanity checking
-#input - q2 metadata object
-#Parameterize category names - default to latitude and longitude
 
 def clean(md_df):
     if 'latitude' not in md_df: #and selected method of binning
@@ -49,6 +38,8 @@ def clean(md_df):
     df['longitude'] = df['longitude'] + 180
     
     return df
+
+
 class Point():
     def __init__(self, x, y, sample_id):
         self.x = float(x)
@@ -93,39 +84,17 @@ class QTree():
     def get_points(self):
         return self.points
     
-    def subdivide(self, samples):
+    def subdivide(self, samples, threshold):
         count = 0
         node_id = ""
         samples = samples
         bins  = []
-        sktree = skbio.TreeNode(name="root")
         
-        samples, bins = recursive_subdivide(self.root, self.threshold, count, node_id, samples, bins, sktree)
-        return sktree, samples, bins
+        samples, bins = recursive_subdivide(self.root, threshold, count, node_id, samples, bins)
+        return samples, bins
     
-    '''
-    def graph(self):
 
-        fig = plt.figure(figsize=(12, 6))
-        plt.title("Quadtree")
-        ax = fig.add_subplot(111)
-        c = find_children(self.root)
-        print("Number of segments: %d" %len(c))
-        areas = set()
-        for el in c:
-            areas.add(el.width*el.height)
-        print("Minimum segment area: %.3f units" %min(areas))
-        for n in c:
-            ax.add_patch(patches.Rectangle((n.x0, n.y0), n.width, n.height, fill=False))
-        x = [point.x for point in self.points]
-        y = [point.y for point in self.points]
-        plt.plot(x, y, 'ro')
-        plt.show()
-        return
-    '''
-
-
-def recursive_subdivide(node, k, count, node_id, samples, bins, sktree):
+def recursive_subdivide(node, k, count, node_id, samples, bins):
 
     if len(node.points) < k:
         return
@@ -133,7 +102,6 @@ def recursive_subdivide(node, k, count, node_id, samples, bins, sktree):
         raise ValueError("The threshold for subdivision is less than the amount of points in one place,", 
                          "please chose a larger threshold for division")
     else:
-        node_id += str(count)
         count += 1
 
     samples["H" + str(count)] = ""
@@ -144,37 +112,37 @@ def recursive_subdivide(node, k, count, node_id, samples, bins, sktree):
     nodes = []
     sk_nodes = []
     for i in range(4):
+        #southwest
         if(i ==0):
-            quad = "sw"
+            quad = "3"
             node.x0 = node.x0
             node.y0 = node.y0
-
+        #northwest
         elif(i==1):
-            quad = "nw"
+            quad = "1"
             node.x0 = node.x0
             node.y0 = node.y0+h_
+        #northeast
         elif(i == 2):
-            quad = "ne"
+            quad = "2"
             node.x0 = node.x0+w_
             node.y0 = node.y0
+        #southeast
         elif(i == 3):
-            quad = "se"
+            quad = "4"
             node.x0 = node.x0
             node.y0 = node.y0-h_
 
         p = contains(node.x0, node.y0, w_, h_, node.points)
-        quad_node= Node(node.x0, node.y0, w_, h_, p, node_id + quad+";")
-        tree_node = skbio.TreeNode(name=str(count) + quad)
+        quad_node= Node(node.x0, node.y0, w_, h_, p, node_id+quad+".")
         
         for pt in p:
             bins.append((pt.sample_id, count, quad_node.get_id()))
-            tree_node.extend([skbio.TreeNode(name=pt.sample_id)])
         
         nodes.append(quad_node)
-        sk_nodes.append(tree_node)
-        recursive_subdivide(quad_node, k, count, node_id+quad+";", samples, bins, tree_node)
+        recursive_subdivide(quad_node, k, count, node_id+quad+".", samples, bins)
+        
 
-    sktree.extend(sk_nodes)
     node.children = nodes
     return samples, bins
 
@@ -188,17 +156,43 @@ def contains(x, y, w, h, points):
             pts.append(point)
     return pts
 
-def get_results(cleaned_df, threshold):
-    cleaned_df = cleaned_df.reset_index()
-    xy = cleaned_df.to_numpy()
-    samples = pd.DataFrame()
+def create_tree(samples):
+    tree = skbio.TreeNode(name="root")
+    lineages = []
+    for i in samples.iterrows():
+        values = list(i[1])
+        lineages.append((i[0], values))
 
-    samples['index'] = cleaned_df['index']
-    samples.set_index("index")
-    q = QTree(threshold, xy)
-    tree, samples, bins = q.subdivide(samples)
+    tree.extend(skbio.TreeNode.from_taxonomy(lineages))
+    return tree
+
+def create_sample_df(bins, samples):
     for samp, bin_i, items in bins:
         bin_name = "H" + str(bin_i)
         samples[bin_name] = np.where(samples['index'] == samp, items, samples[bin_name])
+    return samples
+
+
+def get_results(cleaned_df, threshold):
+    cleaned_df = cleaned_df.reset_index()
+    xy = cleaned_df.to_numpy()
+    q = QTree(threshold, xy)
+
+    samples = pd.DataFrame()
+    samples['index'] = cleaned_df['index']
+    samples.set_index("index")
+
+    samples, bins = q.subdivide(samples, threshold)
+    samples = create_sample_df(bins, samples)
     samples = samples.set_index('index')
+
+    tree = create_tree(samples)
+    
+
+    return tree, samples
+
+def divide(metadata, threshold):
+    cleaned_df = clean(metadata)
+    tree, samples = get_results(cleaned_df, threshold)
+
     return tree, samples
